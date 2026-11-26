@@ -2,6 +2,7 @@
 import 'dotenv/config';
 import { GoogleGenAI } from '@google/genai';
 import fs from 'fs';
+import readline from 'readline/promises';
 
 // 1. Initialize Gemini
 const ai = new GoogleGenAI({
@@ -55,30 +56,37 @@ const responseSchema = {
 
 // 4. Configure Gemini
 const configuration = {
-    systemInstruction: 'Think of yourself as a teacher who creates quizez. base every question only on provided notes .mention the difficulty level',
-
+    systemInstruction: 'Think of yourself as a teacher who creates quizzes. Base every question only on provided notes. Mention the difficulty level. Remember the conversation and answer follow-up questions based on the notes.',
     temperature: 0.2,
-
     responseMimeType: 'application/json',
     responseSchema: responseSchema
 };
 
-
-
 // 5. Create dynamic prompt
 const prompt = [
-    {text: `Attached is an image of note.Generate ${numQuestions} ${difficulty} question based on the imagecontent`},
-    {inlineData: {mimeType: 'image/png', data:imageData}}
-]
+    {
+        text: `Attached is an image of notes. Generate ${numQuestions} ${difficulty} questions based on the image content.`
+    },
+    {
+        inlineData: {
+            mimeType: 'image/png',
+            data: imageData
+        }
+    }
+];
 
 // 6. Make API call
 async function main() {
-    const response = await ai.models.generateContent({
+
+    // Create Gemini chat session
+    const chat = ai.chats.create({
         model: 'gemini-3.1-flash-lite',
-        contents: prompt,
-        config: configuration,
-         
-        });
+        config: configuration
+    });
+
+    const response = await chat.sendMessage({
+        message: prompt
+    });
 
     // 7. Convert JSON response into JavaScript object
     const quiz = JSON.parse(response.text);
@@ -96,7 +104,36 @@ async function main() {
         console.log(`Difficulty: ${q.difficultyLevel}`);
 
     });
+
+    // 9. Conversation history and follow-up questions
+    const rl = readline.createInterface({
+        input: process.stdin,
+        output: process.stdout
+    });
+
+    console.log('\nYou can now ask follow-up questions about your notes.');
+    console.log('Type "exit" to end the conversation.');
+
+    while (true) {
+
+        const message = await rl.question('\nYou: ');
+
+        if (message.toLowerCase() === 'exit') {
+            break;
+        }
+
+        const reply = await chat.sendMessage({
+            message: message,
+            config: {
+                responseMimeType: 'text/plain'
+            }
+        });
+
+        console.log('\nGemini:', reply.text);
+    }
+
+    rl.close();
 }
 
-// 9. Execute function
+// 10. Execute function
 main().catch(console.error);
